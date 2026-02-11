@@ -48,24 +48,24 @@ INIT_FILE="/etc/init.d/${SERVICE_NAME}"
 
 enable_bbr() {
 	info "启用 BBR..."
-	sudo modprobe tcp_bbr 2>/dev/null
-	sudo cat >/etc/sysctl.d/99-bbr.conf <<EOF
+	modprobe tcp_bbr 2>/dev/null
+	cat >/etc/sysctl.d/99-bbr.conf <<EOF
 net.core.default_qdisc = fq_codel
 net.ipv4.tcp_congestion_control = bbr
 EOF
-	sudo sysctl -p 2>/dev/null
+	sysctl -p 2>/dev/null
 }
 
 disable_bbr() {
 	info "停用 BBR..."
-	sudo rm /etc/sysctl.d/99-bbr.conf
-	sudo sysctl -p 2>/dev/null
-	sudo modprobe -r tcp_bbr 2>/dev/null
+	rm /etc/sysctl.d/99-bbr.conf
+	sysctl -p 2>/dev/null
+	modprobe -r tcp_bbr 2>/dev/null
 }
 
 install() {
-	sudo_init_keepalive
-	trap sudo_stop_keepalive ESC INT TERN
+	# sudo_init_keepalive
+	# trap sudo_stop_keepalive ESC INT TERN
 	last_version=$(curl -s "https://api.github.com/repos/SagerNet/sing-box/releases/latest" | grep -m1 '"tag_name"' | tr -d ',"' | awk '{print $2}')
 	info "sing-box最新版本号为： $last_version"
 	ARCH=$(uname -m)
@@ -77,8 +77,8 @@ install() {
 	info "开始下载..."
 	wget https://github.com/SagerNet/sing-box/releases/download/$last_version/sing-box-${last_version#v}-linux-$SB_ARCH.tar.gz -P $HOME/.cache
 	tar -xzf $HOME/.cache/sing-box-${last_version#v}-linux-$SB_ARCH.tar.gz -C $HOME/.cache/
-	sudo mv $HOME/.cache/sing-box*/sing-box "$BIN_FILE"
-	sudo chmod +x "$BIN_FILE"
+	mv $HOME/.cache/sing-box*/sing-box "$BIN_FILE"
+	chmod +x "$BIN_FILE"
 	rm $HOME/.cache/sing-box*
 
 }
