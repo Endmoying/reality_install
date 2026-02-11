@@ -1,0 +1,155 @@
+#!/bin/bash
+info() {
+	echo -e "\033[32m\033[01m$1\033[0m"
+}
+
+warn() {
+	echo -e "\033[33m\033[01m$1\033[0m"
+}
+
+err() {
+	echo -e "\033[31m\033[01m$1\033[0m"
+}
+
+sudo_init_keepalive() {
+	if ! command -v sudo >/dev/null 2>&1; then
+		return 0
+	fi
+	if [[-n $SUDO_KEEPALIVE_PID]] && kill -0 "$SUDO_KEEPALIVE_PID" 2>/dev/null; then
+		return 0
+	fi
+	warn "[$0]: 正在请求sudo权限..."
+	if ! sudo -v; then
+		err "[$0]: 未能获取sudo权限，已停止..."
+		echo -e "${STY_RED}[$0]: Failed to obtain sudo privileges. Aborting...${STY_RST}"
+		exit 1
+	fi
+	(while true; do
+		sleep 60
+		sudo -v 2>/dev/null || exit 0
+	done) &
+	SUDO_KEEPALIVE_PID=$!
+	info "[$0]：sudo会话已初始化并保持（PID:$SUDO_KEEPALIVE_PID）"
+}
+
+sudo_stop_keepalive() {
+	if [[ -n "$SUDO_KEEPALIVE_PID" ]] && kill -0 "$SUDO_KEEPALIVE_PID" 2>/dev/null; then
+		kill "$SUDO_KEEPALIVE_PID" 2>/dev/null
+		wait "$SUDO_KEEPALIVE_PID" 2>/dev/null
+		SUDO_KEEPALIVE_PID=""
+	fi
+}
+
+SERVICE_NAME="sing-box"
+CONFIG_DIR="/etc/sing-box"
+CONFIG_FILE="${CONFIG_DIR}/config.json"
+BIN_FILE="/usr/local/bin/sing-box"
+INIT_FILE="/etc/init.d/${SERVICE_NAME}"
+
+enable_bbr() {
+	info "启用 BBR..."
+	sudo modprobe tcp_bbr 2>/dev/null
+	sudo cat >/etc/sysctl.d/99-bbr.conf <<EOF
+net.core.default_qdisc = fq_codel
+net.ipv4.tcp_congestion_control = bbr
+EOF
+	sudo sysctl -p 2>/dev/null
+}
+
+disable_bbr() {
+	info "停用 BBR..."
+	sudo rm /etc/sysctl.d/99-bbr.conf
+	sudo sysctl -p 2>/dev/null
+	sudo modprobe -r tcp_bbr 2>/dev/null
+}
+
+install() {
+	sudo_init_keepalive
+	trap sudo_stop_keepalive ESC INT TERN
+	last_version=$(curl -s "https://api.github.com/repos/SagerNet/sing-box/releases/latest" | grep -m1 '"tag_name"' | tr -d ',"' | awk '{print $2}')
+	info "sing-box最新版本号为： $last_version"
+	ARCH=$(uname -m)
+	case "$ARCH" in
+	x86_64) SB_ARCH=amd64 ;;
+	*) err "不支持架构：$ARCH" && exit 1 ;;
+	esac
+	info "架构为$ARCH，使用$SB_ARCH"
+	info "开始下载..."
+	wget https://github.com/SagerNet/sing-box/releases/download/$last_version/sing-box-${last_version#v}-linux-$SB_ARCH.tar.gz -P $HOME/.cache
+	tar -xzf $HOME/.cache/sing-box-${last_version#v}-linux-$SB_ARCH.tar.gz -C $HOME/.cache/
+	sudo mv $HOME/.cache/sing-box*/sing-box "$BIN_FILE"
+	sudo chmod +x "$BIN_FILE"
+	rm $HOME/.cache/sing-box*
+
+}
+
+case $1 in
+install | setup | add)
+	if [[ -f "$HOME/SBox/sing-box" ]]; then
+		green "sing-box已安装"
+	else
+		enable_bbr
+		install
+		PORT=${1:-$((RANDOM % 10000 + 10000))}
+		UUID=$(cat /proc/sys/kernel/random/uuid)
+
+		KEYPAIR=$($BIN_FILE generate reality-keypair)
+		PRIVATE_KEY=$(awk '/PrivateKey/ {print $2}' <<<"$KEYPAIR")
+		PUBLIC_KEY=$(awk '/PublicKey/ {print $2}' <<<"$KEYPAIR")
+		SHORT_ID=$(openssl rand -hex 4)
+		SNI="gateway.icloud.com"
+
+		mkdir -p "$CONFIG_DIR"
+		
+		cat >"$CONFIG_FILE" <<EOF
+{
+  "inbounds":[{
+    "type":"vless",
+    "listen":"::",
+    "listen_port":$PORT,
+    "users":[{"uuid":"$UUID","flow":"xtls-rprx-vision"}],
+    "tls":{
+      "enabled":true,
+      "server_name":"$SNI",
+      "reality":{
+        "enabled":true,
+        "handshake":{"server":"$SNI","server_port":443},
+        "private_key":"$PRIVATE_KEY",
+        "short_id":["$SHORT_ID"]
+      }
+    }
+  }],
+  "outbounds":[{"type":"direct"}]
+}
+EOF
+
+		$BIN_FILE check -c "$CONFIG_FILE"
+
+		cat >"$INIT_FILE" <<EOF
+#!/sbin/openrc-run
+command="$BIN_FILE"
+command_args="run -c $CONFIG_FILE"
+command_background="yes"
+pidfile="/run/sing-box.pid"
+EOF
+
+		chmod +x "$INIT_FILE"
+		rc-update add sing-box default
+		rc-service sing-box restart
+
+		IP=$(curl -s ipv4.icanhazip.com)
+		echo ""
+		echo "VLESS:"
+		echo "vless://${UUID}@${IP}:${PORT}?encryption=none&flow=xtls-rprx-vision&security=reality&sni=${SNI}&fp=ios&pbk=${PUBLIC_KEY}&sid=${SHORT_ID}#Reality"
+	fi
+	exit 1
+	;;
+update)
+	exit 1
+	;;
+uninstall | rm | unsetup)
+	disable_bbr
+	exit 1
+	;;
+
+esac
