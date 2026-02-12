@@ -90,7 +90,7 @@ install | setup | add)
 		enable_bbr
 	fi
 	if [[ -f "$BIN_FILE" ]]; then
-		green "sing-box已安装"
+		info "sing-box已安装"
 	else
 		install
 		PORT=${1:-$((RANDOM % 10000 + 10000))}
