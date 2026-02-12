@@ -78,7 +78,7 @@ install() {
 	mkdir -p "$HOME/.cache"
 	wget https://github.com/SagerNet/sing-box/releases/download/$last_version/sing-box-${last_version#v}-linux-$SB_ARCH.tar.gz -P $HOME/.cache
 	tar -xzf $HOME/.cache/sing-box* -C $HOME/.cache/
-	mv $HOME/.cache/sing-box*/sing-box "$BIN_FILE"
+	mv -f $HOME/.cache/sing-box*/sing-box "$BIN_FILE"
 	chmod +x "$BIN_FILE"
 	rm -r $HOME/.cache/sing-box*
 
@@ -154,8 +154,15 @@ uninstall | rm | unsetup)
 		disable_bbr
 		info "bbr已停用"
 	fi
-
-	
+	if [[ -f $BIN_FILE ]]; then
+		rc-service sing-box stop
+		rc-update del sing-box
+		rm $INIT_FILE
+		rm -r $CONFIG_DIR
+		rm $BIN_FILE
+	else
+		err "没有sing-box文件"
+	fi
 	exit 1
 	;;
 
