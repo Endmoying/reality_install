@@ -103,6 +103,7 @@ install | setup | add)
 		SNI="gateway.icloud.com"
 
 		mkdir -p "$CONFIG_DIR"
+		echo $PORT
 		cat >"$CONFIG_FILE" <<EOF
 {
   "inbounds":[{
