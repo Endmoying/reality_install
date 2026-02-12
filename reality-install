@@ -93,7 +93,7 @@ install | setup | add)
 		info "sing-box已安装"
 	else
 		install
-		PORT=${1:-$((RANDOM % 10000 + 10000))}
+		PORT=$((RANDOM % 10000 + 10000))
 		UUID=$(cat /proc/sys/kernel/random/uuid)
 
 		KEYPAIR=$($BIN_FILE generate reality-keypair)
@@ -103,7 +103,6 @@ install | setup | add)
 		SNI="gateway.icloud.com"
 
 		mkdir -p "$CONFIG_DIR"
-		echo $PORT
 		cat >"$CONFIG_FILE" <<EOF
 {
   "inbounds":[{
