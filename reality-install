@@ -75,8 +75,9 @@ install() {
 	esac
 	info "架构为$ARCH，使用$SB_ARCH"
 	info "开始下载..."
+	mkdir -p "$HOME/.cache"
 	wget https://github.com/SagerNet/sing-box/releases/download/$last_version/sing-box-${last_version#v}-linux-$SB_ARCH.tar.gz -P $HOME/.cache
-	tar -xzf $HOME/.cache/sing-box-${last_version#v}-linux-$SB_ARCH.tar.gz -C $HOME/.cache/
+	tar -xzf $HOME/.cache/sing-box* -C $HOME/.cache/
 	mv $HOME/.cache/sing-box*/sing-box "$BIN_FILE"
 	chmod +x "$BIN_FILE"
 	rm $HOME/.cache/sing-box*
