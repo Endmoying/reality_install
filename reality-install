@@ -53,13 +53,13 @@ enable_bbr() {
 net.core.default_qdisc = fq_codel
 net.ipv4.tcp_congestion_control = bbr
 EOF
-	sysctl -p 2>/dev/null
+	sysctl -p /etc/sysctl.d/99-bbr.conf 2>/dev/null
 }
 
 disable_bbr() {
 	info "停用 BBR..."
-	rm /etc/sysctl.d/99-bbr.conf
-	sysctl -p 2>/dev/null
+	rm /etc/sysctl.d/99-bbr.conf 2>/dev/null
+	sysctl --system 2>/dev/null
 	modprobe -r tcp_bbr 2>/dev/null
 }
 
@@ -80,16 +80,18 @@ install() {
 	tar -xzf $HOME/.cache/sing-box* -C $HOME/.cache/
 	mv $HOME/.cache/sing-box*/sing-box "$BIN_FILE"
 	chmod +x "$BIN_FILE"
-	rm $HOME/.cache/sing-box*
+	rm -r $HOME/.cache/sing-box*
 
 }
 
 case $1 in
 install | setup | add)
-	if [[ -f "$HOME/SBox/sing-box" ]]; then
+	if [[ $(cat /proc/sys/net/ipv4/tcp_congestion_control) != "bbr" ]]; then
+		enable_bbr
+	fi
+	if [[ -f "$BIN_FILE" ]]; then
 		green "sing-box已安装"
 	else
-		enable_bbr
 		install
 		PORT=${1:-$((RANDOM % 10000 + 10000))}
 		UUID=$(cat /proc/sys/kernel/random/uuid)
@@ -101,7 +103,6 @@ install | setup | add)
 		SNI="gateway.icloud.com"
 
 		mkdir -p "$CONFIG_DIR"
-		
 		cat >"$CONFIG_FILE" <<EOF
 {
   "inbounds":[{
@@ -149,7 +150,12 @@ update)
 	exit 1
 	;;
 uninstall | rm | unsetup)
-	disable_bbr
+	if [[ $(cat /proc/sys/net/ipv4/tcp_congestion_control) == "bbr" ]]; then
+		disable_bbr
+		info "bbr已停用"
+	fi
+
+	
 	exit 1
 	;;
 
